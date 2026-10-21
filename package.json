@@ -1,0 +1,25 @@
+{
+  "name": "swarmwire-cli",
+  "version": "0.0.1",
+  "description": "Easy P2P file transfer form the terminal",
+  "keywords": [
+    "cli",
+    "p2p",
+    "hyperswarm"
+  ],
+  "homepage": "https://github.com/tibocub/swarmwire-cli#readme",
+  "bugs": {
+    "url": "https://github.com/tibocub/swarmwire-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tibocub/swarmwire-cli.git"
+  },
+  "license": "MIT",
+  "author": "tibotibotibo",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
