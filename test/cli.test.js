@@ -30,7 +30,7 @@ test('send prints a link, get fetches it', async (t) => {
 
   t.ok(link.startsWith('swarmwire://'), `printed a link: ${link.slice(0, 32)}...`)
 
-  const receiver = run(t, ['get', link, out, '--bootstrap', bootstrap])
+  const receiver = run(t, ['get', link, out, '--exit', '--bootstrap', bootstrap])
   const code = await receiver.exit()
 
   t.is(code, 0, 'get exited cleanly')
@@ -49,7 +49,7 @@ test('a private link is the default, and it still works', async (t) => {
 
   t.ok(link.includes('k='), 'the link carries its own secret')
 
-  const receiver = run(t, ['get', link, path.join(dir, 'copy.bin'), '--bootstrap', bootstrap])
+  const receiver = run(t, ['get', link, path.join(dir, 'copy.bin'), '--exit', '--bootstrap', bootstrap])
   t.is(await receiver.exit(), 0)
   t.alike(read(path.join(dir, 'copy.bin')), read(file))
 })
@@ -84,12 +84,18 @@ function run (t, args) {
       return stderr
     },
 
-    async stderrHas (text, ms = 15000) {
-      for (let waited = 0; !stderr.includes(text); waited += 50) {
+    // `after`: only count `text` if it appears after the first `after`.
+    async stderrHas (text, ms = 15000, after = '') {
+      const seen = () => stderr.includes(text, Math.max(0, stderr.indexOf(after)))
+      for (let waited = 0; !seen(); waited += 50) {
         if (waited > ms) throw new Error(`never printed "${text}"; got: ${stderr}`)
         await sleep(50)
       }
       return true
+    },
+
+    kill () {
+      child.kill('SIGKILL')
     },
 
     exit () {
@@ -118,15 +124,69 @@ test('a folder goes as one link and arrives as a folder', async (t) => {
   t.ok(link.includes('t=c'), 'the link says it is a collection')
 
   const out = path.join(dir, 'received')
-  const receiver = run(t, ['get', link, out, '--bootstrap', bootstrap])
+  const receiver = run(t, ['get', link, out, '--exit', '--bootstrap', bootstrap])
   t.is(await receiver.exit(), 0)
-  t.ok(receiver.stderr.includes('3 files, 97.7 KiB'), 'the receiver is told what is coming')
+  t.ok(receiver.stderr.includes('3 files, 100.0 KB'), 'the receiver is told what is coming')
 
-  t.ok(await sender.stderrHas('peers: 1'), 'the sender sees the receiver arrive')
-  t.ok(await sender.stderrHas('peers: 0'), 'and leave')
+  t.ok(await sender.stderrHas('Seeders: 0  Peers: 1'), 'the sender sees one peer arrive')
+  t.ok(await sender.stderrHas('Seeders: 0  Peers: 0', 15000, 'Peers: 1'), 'and then leave')
 
   t.alike(read(path.join(out, 'cover.bin')), read(path.join(source, 'cover.bin')))
   t.alike(read(path.join(out, 'tracks/one.bin')), read(path.join(source, 'tracks/one.bin')))
   t.alike(read(path.join(out, 'tracks/two.bin')), read(path.join(source, 'tracks/two.bin')))
   t.absent(fs.existsSync(path.join(out, '.swarmwire-manifest')), 'and leaves no scratch behind')
+})
+
+test('a receiver that dies without a goodbye stops counting', async (t) => {
+  const testnet = await createTestnet(3, { teardown: t.teardown })
+  const bootstrap = `${testnet.bootstrap[0].host}:${testnet.bootstrap[0].port}`
+
+  const dir = tmpdir(t)
+  const file = writeSample(dir, 'big.bin', 200 * 1024 * 1024)
+
+  const sender = run(t, ['send', file, '--bootstrap', bootstrap])
+  const link = (await sender.firstLine()).trim()
+
+  const receiver = run(t, ['get', link, path.join(dir, 'copy.bin'), '--exit', '--bootstrap', bootstrap])
+  await sender.stderrHas('Seeders: 0  Peers: 1')
+
+  receiver.kill() // power cut: no goodbye
+
+  t.ok(await sender.stderrHas('Seeders: 0  Peers: 0', 60000), 'the sender notices it is gone')
+})
+
+test('options are checked rather than guessed', async (t) => {
+  t.not(await run(t, ['send', '.', '--publc']).exit(), 0, 'a misspelt option')
+  t.not(await run(t, ['get', 'x', '--bootstrap']).exit(), 0, 'an option missing its value')
+})
+
+test('a receiver sees the sender as a seeder, not as a peer', async (t) => {
+  const testnet = await createTestnet(3, { teardown: t.teardown })
+  const bootstrap = `${testnet.bootstrap[0].host}:${testnet.bootstrap[0].port}`
+
+  const dir = tmpdir(t)
+  const sender = run(t, ['send', writeSample(dir, 'f.bin', 100 * 1024 * 1024), '--bootstrap', bootstrap])
+  const link = (await sender.firstLine()).trim()
+
+  const receiver = run(t, ['get', link, path.join(dir, 'copy.bin'), '--bootstrap', bootstrap])
+  t.ok(await receiver.stderrHas('Seeders: 1  Peers: 0'))
+})
+
+test('a receiver that has finished keeps seeding, even with the sender gone', async (t) => {
+  const testnet = await createTestnet(3, { teardown: t.teardown })
+  const bootstrap = `${testnet.bootstrap[0].host}:${testnet.bootstrap[0].port}`
+
+  const dir = tmpdir(t)
+  const file = writeSample(dir, 'f.bin', 100000)
+  const sender = run(t, ['send', file, '--bootstrap', bootstrap])
+  const link = (await sender.firstLine()).trim()
+
+  const first = run(t, ['get', link, path.join(dir, 'one.bin'), '--bootstrap', bootstrap])
+  await first.firstLine() // it prints the path when done
+  t.ok(await first.stderrHas('[Done] you are now seeding.'))
+  sender.kill()
+
+  const second = run(t, ['get', link, path.join(dir, 'two.bin'), '--exit', '--bootstrap', bootstrap])
+  t.is(await second.exit(), 0, 'the second copy came from the first receiver')
+  t.alike(read(path.join(dir, 'two.bin')), read(file))
 })
