@@ -121,6 +121,7 @@ async function get (link, output, flags) {
   if (!stopped) {
     progress.finished = true
     if (!process.stderr.isTTY) warn(flags.exit ? '[Done]' : '[Done] you are now seeding.')
+    clearStatus() // the path goes below nothing: printed inside the status, the next redraw leaves its old bar behind
     print(out)
 
     if (!flags.exit) await interrupted()
@@ -299,10 +300,15 @@ function status (lead, detail, plain) {
   drawn = true
 }
 
-function warn (line) {
-  if (process.stderr.isTTY && drawn) process.stderr.write('\r\x1b[2A\x1b[J') // the status is redrawn below
+/** Erase the status so a line can be printed where it was; the next redraw starts below it. */
+function clearStatus () {
+  if (process.stderr.isTTY && drawn) process.stderr.write('\r\x1b[2A\x1b[J')
   drawn = false
   shown = ''
+}
+
+function warn (line) {
+  clearStatus()
   console.error(line)
 }
 
