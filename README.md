@@ -10,8 +10,9 @@ swarmwire send ./holiday-photos        # prints a link, keeps serving until you 
 swarmwire get "<link>"                 # on the other machine: downloads it, resumable
 ```
 
-The link is private by default: it carries a secret, so only people holding it can find you.
-Pass `--public` to `send` if anyone who knows the hash should be able to.
+Anyone who knows what a file contains can find the people sharing it, whatever each calls it: two
+people sending the same file are one swarm. Pass `--private` to `send` for a link that carries a secret, so that only people
+holding the link can find you.
 
 Both commands keep a two-line status current. Receiving looks like this:
 
@@ -34,7 +35,7 @@ are decimal: 1 MB is 1,000,000 bytes.
 
 | | |
 |---|---|
-| `send <path> [--public]` | share a file or folder; prints a link |
+| `send <path> [--private]` | share a file or folder; prints a link |
 | `get <link> [output] [--exit]` | fetch by link, then keep seeding it (`--exit`: leave instead); the output defaults to the name in the link |
 | `--bootstrap host:port` | use a private DHT instead of the public one (for tests) |
 

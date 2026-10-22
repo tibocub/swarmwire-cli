@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * swarmwire send <path> [--public] [--bootstrap host:port]
+ * swarmwire send <path> [--private] [--bootstrap host:port]
  * swarmwire get <link> [output] [--bootstrap host:port]
  *
  * Deliberately two commands. Sending prints a link and keeps serving the file where it is;
@@ -20,7 +20,7 @@ const USAGE = `swarmwire - content-addressed file transfer, peer to peer
   swarmwire get <link> [output]       fetch a file or folder by link
 
 Options:
-  --public            anyone who knows the hash can find you (default: private)
+  --private           only people holding the link can find you (default: anyone who knows the hash can)
   --exit              get: leave when the download is done instead of seeding it
   --bootstrap <h:p>   use a private DHT instead of the public one
   --help
@@ -32,7 +32,7 @@ let shown = ''
 let drawn = false
 let lastPlain = ''
 
-const FLAGS = { public: false, exit: false, help: false, bootstrap: true } // true: takes a value
+const FLAGS = { private: false, exit: false, help: false, bootstrap: true } // true: takes a value
 
 async function main () {
   const { command, args, flags } = parseArgs(process.argv.slice(2))
@@ -51,7 +51,7 @@ async function send (path, flags) {
   const node = new Swarmwire({ swarm })
 
   // A private link carries its own secret, so only people holding it can find you.
-  const secret = flags.public ? null : randomBytes(32).toString('hex')
+  const secret = flags.private ? randomBytes(32).toString('hex') : null
   const folder = await isDirectory(path)
 
   const { link, size, files } = folder
@@ -61,8 +61,8 @@ async function send (path, flags) {
   print(link)
   warn(
     folder
-      ? `serving ${path} (${files} files, ${bytes(size)})${flags.public ? ' publicly' : ''}`
-      : `serving ${path} (${bytes(size)})${flags.public ? ' publicly' : ''}`
+      ? `serving ${path} (${files} files, ${bytes(size)})${flags.private ? ' privately' : ''}`
+      : `serving ${path} (${bytes(size)})${flags.private ? ' privately' : ''}`
   )
   warn('keep this running; ctrl-c to stop')
 

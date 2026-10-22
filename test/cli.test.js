@@ -37,17 +37,20 @@ test('send prints a link, get fetches it', async (t) => {
   t.alike(read(out), read(file), 'the file arrived intact')
 })
 
-test('a private link is the default, and it still works', async (t) => {
+test('a link is public by default, and --private gives it a secret that still works', async (t) => {
   const testnet = await createTestnet(3, { teardown: t.teardown })
   const bootstrap = `${testnet.bootstrap[0].host}:${testnet.bootstrap[0].port}`
 
   const dir = tmpdir(t)
   const file = writeSample(dir, 'secret.bin', 40000)
 
-  const sender = run(t, ['send', file, '--bootstrap', bootstrap])
+  const sender = run(t, ['send', file, '--private', '--bootstrap', bootstrap])
   const link = (await sender.firstLine()).trim()
 
   t.ok(link.includes('k='), 'the link carries its own secret')
+
+  const open = run(t, ['send', file, '--bootstrap', bootstrap])
+  t.absent((await open.firstLine()).includes('k='), 'and without the flag it has none')
 
   const receiver = run(t, ['get', link, path.join(dir, 'copy.bin'), '--exit', '--bootstrap', bootstrap])
   t.is(await receiver.exit(), 0)
@@ -156,7 +159,7 @@ test('a receiver that dies without a goodbye stops counting', async (t) => {
 })
 
 test('options are checked rather than guessed', async (t) => {
-  t.not(await run(t, ['send', '.', '--publc']).exit(), 0, 'a misspelt option')
+  t.not(await run(t, ['send', '.', '--privat']).exit(), 0, 'a misspelt option')
   t.not(await run(t, ['get', 'x', '--bootstrap']).exit(), 0, 'an option missing its value')
 })
 
