@@ -10,6 +10,12 @@ swarmwire send ./holiday-photos        # prints a link, keeps serving until you 
 swarmwire get "<link>"                 # on the other machine: downloads it, resumable
 ```
 
+Generate QR codes for easy use with the [swarmwire android app](https://github.com/tibocub/swarmwire-mobile)
+```
+swarmwire send ./holiday-photos --qr   # also prints a QR code to flash from the android app
+swarmwire get --qr                     # displays a QR code that can be flashed to send a file from the android app
+```
+
 Anyone who knows what a file contains can find the people sharing it, whatever each calls it: two
 people sending the same file are one swarm. Pass `--private` to `send` for a link that carries a secret, so that only people
 holding the link can find you.
@@ -18,7 +24,7 @@ Both commands keep a two-line status current. Receiving looks like this:
 
 ```
 [=========>          ] 45% [2/3]  TOTAL: [154.2/344.0] MB
-UP: 1.1 MB/s   DOWN: 8.2 MB/s   Seeders: 1  Peers: 0
+UP: 1.1 MB/s  DOWN: 8.2 MB/s        Seeders: 1  Peers: 0
 ```
 
 When the download is done the bar is replaced by `[Done] you are now seeding.` and `get` keeps
