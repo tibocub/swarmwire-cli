@@ -12,7 +12,9 @@ import { spawn } from 'child_process'
 import path from 'path'
 import process from 'process'
 import { fileURLToPath } from 'url'
+import DHT from 'hyperdht'
 
+import { deliver } from '../lib/rendezvous.js'
 import { tmpdir, writeSample, sample, read } from './tmp.js'
 
 const CLI = fileURLToPath(new URL('../bin/swarmwire.js', import.meta.url))
@@ -35,6 +37,41 @@ test('send prints a link, get fetches it', async (t) => {
 
   t.is(code, 0, 'get exited cleanly')
   t.alike(read(out), read(file), 'the file arrived intact')
+})
+
+test('send --qr prints the link on stdout and a QR code on stderr', async (t) => {
+  const testnet = await createTestnet(3, { teardown: t.teardown })
+  const bootstrap = `${testnet.bootstrap[0].host}:${testnet.bootstrap[0].port}`
+
+  const file = writeSample(tmpdir(t), 'qr.bin', 20000)
+  const sender = run(t, ['send', file, '--qr', '--bootstrap', bootstrap])
+
+  t.ok((await sender.firstLine()).startsWith('swarmwire://'), 'stdout is still just the link')
+  await sender.stderrHas('serving')
+  t.ok(/[▀▄█]/.test(sender.stderr), 'a QR code was drawn')
+})
+
+test('get --qr waits at a meeting point, takes the link a scanner hands over, and downloads', async (t) => {
+  const testnet = await createTestnet(3, { teardown: t.teardown })
+  const bootstrap = `${testnet.bootstrap[0].host}:${testnet.bootstrap[0].port}`
+
+  const dir = tmpdir(t)
+  const file = writeSample(dir, 'forwarded.bin', 150000)
+  const out = path.join(dir, 'copy.bin')
+
+  const sender = run(t, ['send', file, '--bootstrap', bootstrap])
+  const link = (await sender.firstLine()).trim()
+
+  const receiver = run(t, ['get', '--qr', out, '--exit', '--bootstrap', bootstrap])
+  await receiver.stderrHas('swarmwire-recv://')
+  const url = receiver.stderr.match(/swarmwire-recv:\/\/[0-9a-f]{64}/)[0]
+
+  const phone = new DHT({ bootstrap: testnet.bootstrap })
+  t.teardown(() => phone.destroy(), { order: 10 })
+  await deliver(phone, url, link)
+
+  t.is(await receiver.exit(), 0, 'get exited cleanly')
+  t.alike(read(out), read(file), 'the file the scanner pointed at arrived intact')
 })
 
 test('a link is public by default, and --private gives it a secret that still works', async (t) => {

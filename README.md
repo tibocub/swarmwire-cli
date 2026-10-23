@@ -35,9 +35,14 @@ are decimal: 1 MB is 1,000,000 bytes.
 
 | | |
 |---|---|
-| `send <path> [--private]` | share a file or folder; prints a link |
+| `send <path> [--private] [--qr]` | share a file or folder; prints a link (`--qr`: also draws it as a QR code) |
+| `get --qr [output] [--exit]` | draw a QR code and wait: a phone scans it and hands over a link (its own file, or one forwarded from another device) |
 | `get <link> [output] [--exit]` | fetch by link, then keep seeding it (`--exit`: leave instead); the output defaults to the name in the link |
 | `--bootstrap host:port` | use a private DHT instead of the public one (for tests) |
+
+`get --qr` listens on a fresh one-shot key on the DHT, shown in the QR code and printed below it as
+`swarmwire-recv://<key>`. It takes the first valid link anyone sends it, then downloads as usual.
+The QR codes go to stderr, so `send`'s stdout is still just the link.
 
 Needs Node 20 or later. Files are shared where they lie: nothing is copied or written next to them.
 

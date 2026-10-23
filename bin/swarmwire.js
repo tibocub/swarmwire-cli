@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * swarmwire send <path> [--private] [--bootstrap host:port]
+ * swarmwire send <path> [--private] [--qr] [--bootstrap host:port]
  * swarmwire get <link> [output] [--bootstrap host:port]
+ * swarmwire get --qr [output] [--bootstrap host:port]
  *
  * Deliberately two commands. Sending prints a link and keeps serving the file where it is;
  * getting takes that link and nothing else.
@@ -12,15 +13,19 @@ import { stat } from 'fs/promises'
 import Hyperswarm from 'hyperswarm'
 import DHT from 'hyperdht'
 import b4a from 'b4a'
+import { renderQr } from '../lib/qr.js'
+import { receive } from '../lib/rendezvous.js'
 import { Swarmwire, parseLink, groupLength, DEFAULT_GROUP_LOG } from 'swarmwire-lib'
 
 const USAGE = `swarmwire - content-addressed file transfer, peer to peer
 
   swarmwire send <path> [options]     share a file or folder; prints a link
   swarmwire get <link> [output]       fetch a file or folder by link
+  swarmwire get --qr [output]         show a QR code; a phone scans it and hands over a link
 
 Options:
   --private           only people holding the link can find you (default: anyone who knows the hash can)
+  --qr                send: also show the link as a QR code. get: wait for a link from a scanner
   --exit              get: leave when the download is done instead of seeding it
   --bootstrap <h:p>   use a private DHT instead of the public one
   --help
@@ -32,14 +37,14 @@ let shown = ''
 let drawn = false
 let lastPlain = ''
 
-const FLAGS = { private: false, exit: false, help: false, bootstrap: true } // true: takes a value
+const FLAGS = { private: false, exit: false, qr: false, help: false, bootstrap: true } // true: takes a value
 
 async function main () {
   const { command, args, flags } = parseArgs(process.argv.slice(2))
 
   if (flags.help || !command) return print(USAGE)
   if (command === 'send') return send(args[0], flags)
-  if (command === 'get') return get(args[0], args[1], flags)
+  if (command === 'get') return flags.qr ? get(null, args[0], flags) : get(args[0], args[1], flags)
 
   throw new Error(`unknown command: ${command}\n\n${USAGE}`)
 }
@@ -59,6 +64,7 @@ async function send (path, flags) {
     : await node.serve(path, { secret })
 
   print(link)
+  if (flags.qr) warn(renderQr(link, { color: process.stderr.isTTY }))
   warn(
     folder
       ? `serving ${path} (${files} files, ${bytes(size)})${flags.private ? ' privately' : ''}`
@@ -77,12 +83,18 @@ async function send (path, flags) {
 }
 
 async function get (link, output, flags) {
-  if (!link) throw new Error('get needs a link\n\n' + USAGE)
+  if (!link && !flags.qr) throw new Error('get needs a link\n\n' + USAGE)
+
+  const swarm = createSwarm(flags)
+
+  if (!link) {
+    link = await linkFromScanner(swarm)
+    if (!link) return swarm.destroy() // interrupted while waiting
+  }
 
   const parsed = parseLink(link)
   const out = output ?? safeName(parsed.name) ?? parsed.root.slice(0, 16)
 
-  const swarm = createSwarm(flags)
   const node = new Swarmwire({ swarm })
 
   warn(`fetching ${parsed.root.slice(0, 16)}... into ${out}`)
@@ -131,6 +143,19 @@ async function get (link, output, flags) {
   warn('stopping')
   await node.destroy()
   await swarm.destroy()
+}
+
+/** Show a QR code for a one-shot meeting point and wait for a scanner to hand us a link. */
+async function linkFromScanner (swarm) {
+  const meeting = await receive(swarm.dht)
+
+  warn(renderQr(meeting.url, { color: process.stderr.isTTY }))
+  warn(`${meeting.url}\nscan this with the swarmwire app and pick something to send; ctrl-c to cancel`)
+
+  const link = await Promise.race([meeting.link, interrupted().then(() => null)])
+  await meeting.close()
+
+  return link
 }
 
 /** Resolves on ctrl-c or a polite kill, so serving can end cleanly. */
