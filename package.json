@@ -1,6 +1,6 @@
 {
   "name": "swarmwire-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send a file or folder to someone with a link. Peer to peer, from the terminal.",
   "keywords": [
     "cli",
